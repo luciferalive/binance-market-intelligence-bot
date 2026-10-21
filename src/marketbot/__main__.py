@@ -47,6 +47,13 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("paper-status", help="Show virtual balance, positions and recent trades")
     status.add_argument("--db", default="data/paper_account.sqlite3")
 
+    demo_balance = subparsers.add_parser("demo-balance", help="Read balances from Binance Spot Demo (sandbox only)")
+
+    demo_order = subparsers.add_parser("demo-order", help="Place a manual order on Binance Spot Demo (sandbox only)")
+    demo_order.add_argument("symbol", help="CCXT market symbol, for example BTC/USDT")
+    demo_order.add_argument("side", choices=["buy", "sell"])
+    demo_order.add_argument("amount", type=float, help="Base-asset quantity, not quote-currency amount")
+
     return parser
 
 
@@ -113,6 +120,17 @@ def run_paper_status(args: argparse.Namespace) -> None:
     print(json.dumps(trader.status(), indent=2))
 
 
+def run_demo_balance() -> None:
+    from .binance_demo import BinanceSpotDemo
+    print(json.dumps(BinanceSpotDemo().account_balance(), indent=2))
+
+
+def run_demo_order(args: argparse.Namespace) -> None:
+    from .binance_demo import BinanceSpotDemo
+    result = BinanceSpotDemo().market_order(args.symbol, args.side, args.amount)
+    print(json.dumps(result, indent=2))
+
+
 def main() -> None:
     args = build_parser().parse_args()
     if args.command == "scan":
@@ -123,6 +141,10 @@ def main() -> None:
         run_paper(args)
     elif args.command == "paper-status":
         run_paper_status(args)
+    elif args.command == "demo-balance":
+        run_demo_balance()
+    elif args.command == "demo-order":
+        run_demo_order(args)
 
 
 if __name__ == "__main__":
