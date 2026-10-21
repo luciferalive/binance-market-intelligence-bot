@@ -42,7 +42,7 @@ def size_position(
     equity: float,
     entry: float,
     stop: float,
-    limits: RiskLimits = RiskLimits(),
+    limits: RiskLimits | None = None,
     available_cash: float | None = None,
 ) -> PositionPlan:
     """Size a long spot position from stop distance and equity risk.
@@ -58,6 +58,7 @@ def size_position(
     if available_cash is not None and available_cash < 0:
         raise ValueError("available_cash cannot be negative")
 
+    limits = limits or RiskLimits()
     risk_budget = equity * limits.risk_fraction
     stop_distance = entry - stop
     qty_by_risk = risk_budget / stop_distance
@@ -84,6 +85,7 @@ def check_portfolio_limits(
     limits: RiskLimits = RiskLimits(),
 ) -> tuple[bool, str]:
     """Return (allowed, reason) for a proposed additional long position."""
+    limits = limits or RiskLimits()
     if equity <= 0:
         return False, "equity must be positive"
     if open_positions >= limits.max_open_positions:
