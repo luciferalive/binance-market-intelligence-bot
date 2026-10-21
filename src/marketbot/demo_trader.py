@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+
+import ccxt
 
 from .binance_demo import BinanceSpotDemo
 from .scanner import scan_markets
@@ -77,7 +80,7 @@ class BinanceDemoTrader:
 
     @staticmethod
     def _now() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def _positions(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -108,7 +111,7 @@ class BinanceDemoTrader:
                 filled = float(updated.get("filled") or 0)
                 average = updated.get("average")
                 return filled, float(average) if average else None
-            except Exception:
+            except ccxt.BaseError:
                 pass
         return 0.0, None
 
@@ -225,7 +228,7 @@ class BinanceDemoTrader:
             except KeyboardInterrupt:
                 print("\n[demo-auto] stopped; tracked state remains in SQLite.")
                 return
-            except Exception as exc:
+            except (ccxt.BaseError, sqlite3.Error, ValueError, TypeError) as exc:
                 print(f"[demo-auto] cycle error: {exc}")
             try:
                 time.sleep(max(0.0, self.interval - (time.monotonic() - started)))
