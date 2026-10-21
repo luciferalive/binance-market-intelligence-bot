@@ -54,6 +54,21 @@ def build_parser() -> argparse.ArgumentParser:
     demo_order.add_argument("side", choices=["buy", "sell"])
     demo_order.add_argument("amount", type=float, help="Base-asset quantity, not quote-currency amount")
 
+    demo_auto = subparsers.add_parser(
+        "demo-auto",
+        help="Automatically scan and trade through the connected Binance Spot Demo account",
+    )
+    demo_auto.add_argument("--quote", default="USDT")
+    demo_auto.add_argument("--timeframe", default="1h")
+    demo_auto.add_argument("--top", type=int, default=50)
+    demo_auto.add_argument("--interval", type=int, default=300)
+    demo_auto.add_argument(
+        "--max-allocation", type=float, default=1000.0,
+        help="Strategy entry-notional cap in quote currency; not a separate wallet",
+    )
+    demo_auto.add_argument("--max-positions", type=int, default=5)
+    demo_auto.add_argument("--db", default="data/binance_demo_trader.sqlite3")
+
     return parser
 
 
@@ -131,6 +146,20 @@ def run_demo_order(args: argparse.Namespace) -> None:
     print(json.dumps(result, indent=2))
 
 
+def run_demo_auto(args: argparse.Namespace) -> None:
+    from .demo_trader import BinanceDemoTrader
+    trader = BinanceDemoTrader(
+        db_path=args.db,
+        quote=args.quote,
+        timeframe=args.timeframe,
+        top=args.top,
+        interval=args.interval,
+        max_allocation=args.max_allocation,
+        max_positions=args.max_positions,
+    )
+    trader.run_forever()
+
+
 def main() -> None:
     args = build_parser().parse_args()
     if args.command == "scan":
@@ -145,6 +174,8 @@ def main() -> None:
         run_demo_balance()
     elif args.command == "demo-order":
         run_demo_order(args)
+    elif args.command == "demo-auto":
+        run_demo_auto(args)
 
 
 if __name__ == "__main__":
