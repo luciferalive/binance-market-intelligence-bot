@@ -1,66 +1,66 @@
-# Binance Spot Demo API setup
+# Binance Spot Demo Trading
 
-This mode is intended for Binance Spot Demo Trading only. It does not use live
-account credentials or live order endpoints.
+This mode uses Binance's **Spot Demo Trading** API and the connected demo
+account's balances. It does not create a local pretend wallet. The optional
+allocation cap only limits how much quote currency this strategy may commit
+to entry positions.
 
-## 1. Create demo credentials
+## Credentials
 
-In Binance, open **Demo Trading**, select **Spot**, then use the Demo API
-Management page to create demo API credentials. Do not paste credentials into
-GitHub, issues, or chat.
+Create API credentials from Binance Demo Trading's API management page. Do not
+paste keys into chat or commit them to GitHub. Set them locally.
 
-Set them in your local shell (PowerShell):
-
+PowerShell:
 ```powershell
 $env:BINANCE_DEMO_API_KEY="your-demo-api-key"
 $env:BINANCE_DEMO_API_SECRET="your-demo-api-secret"
 ```
 
-For macOS/Linux:
-
+macOS/Linux:
 ```bash
 export BINANCE_DEMO_API_KEY="your-demo-api-key"
 export BINANCE_DEMO_API_SECRET="your-demo-api-secret"
 ```
 
-## 2. Install and check the demo account
+The adapter requires CCXT's `enable_demo_trading(True)` support. It fails
+closed if that method is missing and does not fall back to generic sandbox or
+live API routing. Upgrade the project's dependencies if your installed CCXT
+does not provide Binance Demo Trading support.
 
-From the project root:
-
-```bash
-pip install -e .
-marketbot demo-balance
-```
-
-The command uses CCXT sandbox mode and displays the demo account's virtual
-balances. Demo assets are provided by Binance; this command does not mint or
-reset a balance.
-
-## 3. Place a manual demo order
-
-Example: buy 0.001 BTC using the demo Spot account:
+## Verify the connection first
 
 ```bash
-marketbot demo-order BTC/USDT buy 0.001
+python -m marketbot demo-balance
 ```
 
-Sell example:
+This should display the balances from your Binance Spot Demo account.
+
+## Automatic scanner and demo trading
+
+Start the loop:
 
 ```bash
-marketbot demo-order BTC/USDT sell 0.001
+python -m marketbot demo-auto --quote USDT --timeframe 1h --top 50 --interval 300 --max-allocation 1000
 ```
 
-The amount is in the base asset (BTC in BTC/USDT), not USDT. Orders are
-sandbox-only and are rejected if the market is not listed in the demo exchange.
+The bot scans public Spot markets for `LONG_SETUP` signals, checks the connected
+account's actual free quote balance, and submits market orders only through
+Binance Demo Trading. The default 1,000 USDT is a strategy entry-notional cap,
+not a separate wallet or a claim that the exchange account contains 1,000 USDT.
+Use `--max-allocation` to change that cap. The bot tracks confirmed fills and
+its own positions in `data/binance_demo_trader.sqlite3`.
 
-## Current scope and safety
+Stop the loop with Ctrl+C. Order/position history is stored locally in SQLite.
 
-- `demo-balance` reads the demo wallet.
-- `demo-order` is a manual sandbox order command.
-- The existing `paper` command remains an independent local SQLite simulation.
-- This initial demo integration does **not yet automatically turn scanner signals
-  into orders**, and the 1,000 USDT strategy allocation/risk controls are not
-  wired into demo orders yet. Do not run unattended orders until that layer,
-  position tracking, stop logic, and tests are added.
-- Never use live Binance API credentials with this project. Keep demo keys in
-  local environment variables and out of version control.
+## Important limitations
+
+- This is demo-only. Do not use live API credentials.
+- Stop-loss and take-profit checks are polling-based: the bot checks prices on
+  each cycle and submits a market sell when a threshold is crossed. These are
+  **not exchange-hosted protective orders** and may execute late or at a worse
+  price, especially if the process or network is down.
+- A market order can partially fill or fail. The bot records confirmed fills
+  only; review demo order history and local SQLite records.
+- The strategy is experimental and has not been validated for profitability.
+- Existing `paper` mode is a separate local SQLite simulation. It is not the
+  Binance Demo account.
