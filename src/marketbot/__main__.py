@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("paper-status", help="Show virtual balance, positions and recent trades")
     status.add_argument("--db", default="data/paper_account.sqlite3")
 
-    demo_balance = subparsers.add_parser("demo-balance", help="Read balances from Binance Spot Demo (sandbox only)")
+    subparsers.add_parser("demo-balance", help="Read balances from Binance Spot Demo (sandbox only)")
 
     demo_order = subparsers.add_parser("demo-order", help="Place a manual order on Binance Spot Demo (sandbox only)")
     demo_order.add_argument("symbol", help="CCXT market symbol, for example BTC/USDT")
@@ -92,7 +92,7 @@ def run_scan(args: argparse.Namespace) -> None:
             print(f"  {row.get('reasons', '')}")
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fields = sorted({key for row in rows for key in row.keys()})
+    fields = sorted({key for row in rows for key in row})
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
