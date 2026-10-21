@@ -1,0 +1,10 @@
+{
+  "mode": "research_only",
+  "risk_fraction_per_trade": 0.01,
+  "max_position_fraction": 0.20,
+  "max_open_positions": 5,
+  "max_daily_loss_fraction": 0.03,
+  "max_total_exposure_fraction": 0.70,
+  "live_trading_enabled": false,
+  "note": "Example settings only. These limits are not connected to order execution."
+}
