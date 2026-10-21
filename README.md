@@ -2,11 +2,14 @@
 
 Research-first Binance Spot market scanner that ranks liquid USDT markets using trend, momentum, breakout, volatility, and relative-volume features. It produces explainable **WATCH / LONG_SETUP / NO_SETUP** research signals with proposed stop and target levels.
 
-> **Risk notice:** This project is experimental research software, not financial advice and not a profit guarantee. It does not place orders, connect to private account endpoints, or require API keys. Signals are hypotheses that must be validated with realistic backtests and paper trading.
+> **Risk notice:** This is experimental research software, not financial advice or a profit guarantee. It includes a Binance Spot Demo Trading adapter and automatic demo-order loop, but no live-trading command. Signals are hypotheses and the strategy is not validated for profitability..
 
 ## Current scope
 
-- Public Binance Spot market data only; no credentials required.
+- Public Binance Spot market data for scanning; no credentials required for research scans.
+- Optional private API connection to Binance Spot Demo Trading using demo-specific credentials only.
+- Automatic demo trading reads the connected demo account's actual balances and records confirmed fills locally.
+- A configurable strategy allocation cap limits entry notional; it is not a fabricated or separate wallet.
 - Discovers eligible USDT spot pairs dynamically from exchange metadata.
 - Filters leveraged tokens and stablecoin/stablecoin pairs where practical.
 - Scores trend, momentum, breakout, and relative volume using closed candles.
@@ -16,10 +19,10 @@ Research-first Binance Spot market scanner that ranks liquid USDT markets using 
 - Includes position-sizing helpers and portfolio exposure/daily-loss guardrails (not connected to execution).
 - Includes unit tests for indicators and signal generation.
 
-## Not included yet
+## Not included
 
-- Live order execution or private account connection.
-- Futures, margin, leverage, or short selling.
+- Live order execution, futures, margin, leverage, or short selling.
+- Exchange-hosted stop-loss/take-profit orders. Demo exits are polling-based and can execute late or at worse prices.
 - News/social sentiment, on-chain data, or token fundamental analysis.
 - Guaranteed rug-pull, pump, or loss prediction.
 - A claim of profitability. The baseline strategy is not validated.
@@ -57,6 +60,30 @@ python -m marketbot scan --quote USDT --timeframe 1h --top 20 --output signals.c
 
 The scanner ranks pairs by 24-hour quote volume before fetching candle history, to limit public API usage. Results are printed and written to CSV. Binance public endpoints have rate limits; do not run aggressive polling loops.
 
+## Binance Spot Demo Trading
+
+Create demo API credentials in Binance Spot Demo Trading and set
+`BINANCE_DEMO_API_KEY` and `BINANCE_DEMO_API_SECRET` in your local environment.
+Never paste them into chat or commit them to Git. Verify the connection and
+read the exchange's actual demo balance:
+
+```bash
+python -m marketbot demo-balance
+```
+
+Run automatic demo trading:
+
+```bash
+python -m marketbot demo-auto --quote USDT --timeframe 1h --top 50 --interval 300 --max-allocation 1000
+```
+
+The 1,000 USDT default is an entry-notional cap for this strategy, not a
+separate wallet. The bot submits orders only after explicitly enabling CCXT's
+Binance Demo Trading mode and fails closed if that capability is unavailable.
+Stop the loop with Ctrl+C. See [the demo setup and limitations](docs/BINANCE_SPOT_DEMO.md),
+especially the warning that protective exits are polling-based rather than
+exchange-hosted.
+
 ## Signal logic (baseline, not a recommendation)
 
 The score combines:
@@ -79,7 +106,7 @@ Before enabling any real trading, add and test:
 6. Paper trading over a meaningful period and review of drawdown and risk-adjusted returns.
 7. API keys with withdrawals disabled; never commit secrets to Git.
 
-The initial release deliberately has **no live trading path**. Do not add private API credentials to this project.
+The project deliberately has **no live trading path**. Never use live Binance credentials with the demo commands; demo credentials belong only in local environment variables..
 
 ## Tests
 
