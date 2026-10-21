@@ -82,7 +82,7 @@ def check_portfolio_limits(
     current_exposure: float,
     proposed_notional: float,
     daily_pnl: float,
-    limits: RiskLimits = RiskLimits(),
+    limits: RiskLimits | None = None,
 ) -> tuple[bool, str]:
     """Return (allowed, reason) for a proposed additional long position."""
     limits = limits or RiskLimits()
