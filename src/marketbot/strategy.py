@@ -62,9 +62,9 @@ def analyze_candles(
     relvol_value = float(relative_volume.iloc[-1])
     prior_high_value = float(prior_high.iloc[-1])
 
-    if not all(map(lambda x: pd.notna(x), [
+    if not all(pd.notna(x) for x in [
         atr_value, rsi_value, fast_value, slow_value, relvol_value, prior_high_value
-    ])) or price <= 0 or atr_value <= 0:
+    ]) or price <= 0 or atr_value <= 0:
         raise ValueError("Indicators could not be calculated from supplied candles")
 
     score = 0
