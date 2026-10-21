@@ -5,6 +5,7 @@ configured allocation is only a strategy cap; it is not a fabricated wallet.
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 import time
 from collections.abc import Callable
@@ -16,6 +17,8 @@ import ccxt
 
 from .binance_demo import BinanceSpotDemo
 from .scanner import scan_markets
+
+logger = logging.getLogger(__name__)
 
 
 class BinanceDemoTrader:
@@ -111,8 +114,8 @@ class BinanceDemoTrader:
                 filled = float(updated.get("filled") or 0)
                 average = updated.get("average")
                 return filled, float(average) if average else None
-            except ccxt.BaseError:
-                pass
+            except ccxt.BaseError as exc:
+                logger.warning("Could not refresh demo order fill for %s: %s", symbol, exc)
         return 0.0, None
 
     def _manage_positions(self, balance: dict[str, Any]) -> None:
