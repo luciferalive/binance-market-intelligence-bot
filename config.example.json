@@ -1,0 +1,24 @@
+{
+  "market_type": "spot",
+  "quote_asset": "USDT",
+  "timeframe": "1h",
+  "markets_by_24h_quote_volume": 80,
+  "ohlcv_candles": 160,
+  "mode": "research_only",
+  "live_trading_enabled": false,
+  "risk": {
+    "risk_per_trade_pct": 0.5,
+    "max_open_positions": 3,
+    "max_daily_loss_pct": 2.0,
+    "max_total_open_risk_pct": 1.5
+  },
+  "strategy": {
+    "ema_fast": 20,
+    "ema_slow": 50,
+    "rsi_period": 14,
+    "atr_period": 14,
+    "breakout_period": 20,
+    "stop_atr_multiple": 2.0,
+    "target_reward_risk": 2.0
+  }
+}
