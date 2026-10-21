@@ -8,9 +8,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import ccxt
 
 from .risk import RiskLimits, size_position
 from .scanner import make_exchange, scan_markets
@@ -89,7 +91,7 @@ class PaperTrader:
 
     @staticmethod
     def _now() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def status(self) -> dict[str, Any]:
         with self._connect() as conn:
@@ -100,7 +102,7 @@ class PaperTrader:
         if positions:
             try:
                 tickers = self.exchange.fetch_tickers([p["symbol"] for p in positions])
-            except Exception:
+            except ccxt.BaseError:
                 tickers = {}
         market_value = 0.0
         unrealized = 0.0
@@ -153,7 +155,7 @@ class PaperTrader:
             return
         try:
             tickers = self.exchange.fetch_tickers([p["symbol"] for p in positions])
-        except Exception as exc:
+        except ccxt.BaseError as exc:
             print(f"[paper] price refresh failed; keeping positions open: {exc}")
             return
         for p in positions:
@@ -240,7 +242,7 @@ class PaperTrader:
             except KeyboardInterrupt:
                 print("\\n[paper] stopped by user; virtual account state is saved.")
                 return
-            except Exception as exc:
+            except (ccxt.BaseError, sqlite3.Error, ValueError, TypeError) as exc:
                 print(f"[paper] cycle failed; will retry next interval: {exc}")
             wait = max(0.0, self.scan_interval - (time.monotonic() - started))
             try:
