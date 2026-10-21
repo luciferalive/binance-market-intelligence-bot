@@ -64,7 +64,7 @@ def test_rejects_invalid_order(demo, side, amount):
 
 def test_rejects_market_not_in_demo(demo):
     adapter, exchange = demo
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         adapter.market_order("FAKE/USDT", "buy", 1)
     assert exchange.orders == []
 
