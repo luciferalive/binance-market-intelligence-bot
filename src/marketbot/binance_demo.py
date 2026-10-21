@@ -8,6 +8,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import ccxt
+
 
 class BinanceSpotDemo:
     """CCXT adapter that explicitly enables Binance Demo Trading."""
@@ -34,7 +36,7 @@ class BinanceSpotDemo:
         # Fail closed if this CCXT version cannot select the demo environment.
         enable_demo = getattr(self.exchange, "enable_demo_trading", None)
         if not callable(enable_demo):
-            raise RuntimeError(
+            raise RuntimeError(  # noqa: TRY004
                 "Your CCXT version lacks Binance Demo Trading support. "
                 "Upgrade CCXT; refusing to use set_sandbox_mode() as a fallback."
             )
