@@ -11,7 +11,9 @@ Research-first Binance Spot market scanner that ranks liquid USDT markets using 
 - Filters leveraged tokens and stablecoin/stablecoin pairs where practical.
 - Scores trend, momentum, breakout, and relative volume using closed candles.
 - Calculates ATR-based stop distance and a configurable reward/risk target.
-- Exports ranked signals to CSV.
+- Exports ranked signals to CSV
+- Includes a historical-candle backtest CLI with fees and conservative stop/target handling
+- Includes position-sizing helpers and portfolio exposure/daily-loss guardrails (not connected to execution).
 - Includes unit tests for indicators and signal generation.
 
 ## Not included yet
