@@ -1,122 +1,144 @@
 # Binance Market Intelligence Bot
 
-Research-first Binance Spot market scanner that ranks liquid USDT markets using trend, momentum, breakout, volatility, and relative-volume features. It produces explainable **WATCH / LONG_SETUP / NO_SETUP** research signals with proposed stop and target levels.
+**A research-first Binance Spot scanner with a connected-account demo trading mode.**
 
-> **Risk notice:** This is experimental research software, not financial advice or a profit guarantee. It includes a Binance Spot Demo Trading adapter and automatic demo-order loop, but no live-trading command. Signals are hypotheses and the strategy is not validated for profitability..
+Scan a changing universe of Binance Spot pairs, rank setups using technical signals, and optionally route demo orders through your **Binance Spot Demo account**. The exchange account is the source of truth for balances. No pretend wallet, no live-trading command.
 
-## Current scope
+> [!WARNING]
+> Experimental software, not financial advice. Signals are rules-based hypotheses, not predictions or a claim of profitability. Demo exits are polling-based, not exchange-hosted protective orders. The bot can miss an exit or receive a worse price if it is offline or markets move quickly.
 
-- Public Binance Spot market data for scanning; no credentials required for research scans.
-- Optional private API connection to Binance Spot Demo Trading using demo-specific credentials only.
-- Automatic demo trading reads the connected demo account's actual balances and records confirmed fills locally.
-- A configurable strategy allocation cap limits entry notional; it is not a fabricated or separate wallet.
-- Discovers eligible USDT spot pairs dynamically from exchange metadata.
-- Filters leveraged tokens and stablecoin/stablecoin pairs where practical.
-- Scores trend, momentum, breakout, and relative volume using closed candles.
-- Calculates ATR-based stop distance and a configurable reward/risk target.
-- Exports ranked signals to CSV
-- Includes a historical-candle backtest CLI with fees and conservative stop/target handling
-- Includes position-sizing helpers and portfolio exposure/daily-loss guardrails (not connected to execution).
-- Includes unit tests for indicators and signal generation.
+## What it does
 
-## Not included
+| Feature | Details |
+| --- | --- |
+| Market discovery | Finds eligible Binance Spot quote pairs dynamically |
+| Signal analysis | Trend, momentum, breakout, relative volume, and ATR-based risk levels |
+| Research output | Ranked **WATCH / LONG_SETUP / NO_SETUP** signals and CSV export |
+| Backtesting | Historical candles with fees and conservative stop/target handling |
+| Binance Demo | Reads connected demo balances and can submit demo orders |
+| Risk controls | Strategy allocation cap and position tracking for demo execution |
 
-- Live order execution, futures, margin, leverage, or short selling.
-- Exchange-hosted stop-loss/take-profit orders. Demo exits are polling-based and can execute late or at worse prices.
-- News/social sentiment, on-chain data, or token fundamental analysis.
-- Guaranteed rug-pull, pump, or loss prediction.
-- A claim of profitability. The baseline strategy is not validated.
+## Quick start
 
-## Requirements
-
-- Python 3.11+
-- Internet connection to query Binance public market-data endpoints
-
-## Install
+Requires **Python 3.11+** and internet access for Binance public market data.
 
 ```bash
 git clone https://github.com/luciferalive/binance-market-intelligence-bot.git
 cd binance-market-intelligence-bot
 python -m venv .venv
-# Windows PowerShell:
+```
+
+Activate the environment:
+
+**Windows PowerShell**
+```powershell
 .venv\\Scripts\\Activate.ps1
-# macOS/Linux:
-# source .venv/bin/activate
+```
+
+**macOS / Linux**
+```bash
+source .venv/bin/activate
+```
+
+Install:
+```bash
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
-## Run a scan
+## Scan the market
 
+Scan USDT pairs on the 1-hour timeframe and save ranked results:
 ```bash
 python -m marketbot scan --quote USDT --timeframe 1h --top 80 --output reports/signals.csv
 ```
 
-For a quicker smoke test, scan fewer markets:
-
+Smaller smoke test:
 ```bash
 python -m marketbot scan --quote USDT --timeframe 1h --top 20 --output signals.csv
 ```
 
-The scanner ranks pairs by 24-hour quote volume before fetching candle history, to limit public API usage. Results are printed and written to CSV. Binance public endpoints have rate limits; do not run aggressive polling loops.
+The scanner prioritizes markets by 24-hour quote volume before fetching candles to reduce API load. Binance public endpoints have rate limits; avoid aggressive polling.
 
-## Binance Spot Demo Trading
+## Connect Binance Spot Demo
 
-Create demo API credentials in Binance Spot Demo Trading and set
-`BINANCE_DEMO_API_KEY` and `BINANCE_DEMO_API_SECRET` in your local environment.
-Never paste them into chat or commit them to Git. Verify the connection and
-read the exchange's actual demo balance:
+1. Create **Binance Spot Demo Trading** API credentials in Binance.
+2. Set them locally as environment variables. Do not paste keys into chat, commit them, or use live-account keys.
 
+**Windows PowerShell**
+```powershell
+$env:BINANCE_DEMO_API_KEY="your_demo_key"
+$env:BINANCE_DEMO_API_SECRET="your_demo_secret"
+```
+
+**macOS / Linux**
+```bash
+export BINANCE_DEMO_API_KEY="your_demo_key"
+export BINANCE_DEMO_API_SECRET="your_demo_secret"
+```
+
+Check the connection and inspect the balance returned by the connected demo account:
 ```bash
 python -m marketbot demo-balance
 ```
 
-Run automatic demo trading:
-
+Start the automatic demo loop:
 ```bash
 python -m marketbot demo-auto --quote USDT --timeframe 1h --top 50 --interval 300 --max-allocation 1000
 ```
 
-The 1,000 USDT default is an entry-notional cap for this strategy, not a
-separate wallet. The bot submits orders only after explicitly enabling CCXT's
-Binance Demo Trading mode and fails closed if that capability is unavailable.
-Stop the loop with Ctrl+C. See [the demo setup and limitations](docs/BINANCE_SPOT_DEMO.md),
-especially the warning that protective exits are polling-based rather than
-exchange-hosted.
+Stop it with **Ctrl+C**.
 
-## Signal logic (baseline, not a recommendation)
+### Allocation is a cap, not a wallet
 
-The score combines:
-- Trend alignment: EMA 20 versus EMA 50 and closing price versus EMA 20.
-- Momentum: RSI range and recent returns.
-- Breakout: close relative to the prior rolling high, excluding the current candle.
-- Relative volume: current closed-candle volume compared with a rolling average.
-- Volatility: ATR as a percentage of price, used to estimate risk levels.
+`--max-allocation 1000` limits the strategy's entry notional. It does **not** create or claim a separate 1,000 USDT balance. The bot reads the connected Binance Demo account's actual balances and submits demo orders through that account. Your demo account must have sufficient virtual funds and supported market permissions.
 
-A high score means the features match the coded rules. It is **not** a calibrated probability that a trade will win. Signals use closed candles to avoid acting on an unfinished candle. Stop/target prices are estimates; gaps, fees, slippage, and execution constraints can change realized outcomes.
+Read [Binance Spot Demo details and limitations](docs/BINANCE_SPOT_DEMO.md) before running the loop. Demo trading is not live trading, and the polling-based exit logic is not a guaranteed stop-loss.
 
-## Risk principles for future execution work
+## How signals are calculated
 
-Before enabling any real trading, add and test:
-1. Walk-forward and out-of-sample backtesting across multiple market regimes.
-2. Trading fees, spread, slippage, latency, and exchange filters in simulation.
-3. Position sizing from a fixed fraction of equity and stop distance.
-4. Limits on daily loss, total open risk, correlated exposure, and simultaneous positions.
-5. Persistent order/position state, reconciliation, retries, and a kill switch.
-6. Paper trading over a meaningful period and review of drawdown and risk-adjusted returns.
-7. API keys with withdrawals disabled; never commit secrets to Git.
+The baseline score uses:
+- **Trend:** EMA 20/50 alignment and price relative to EMA 20
+- **Momentum:** RSI range and recent returns
+- **Breakout:** close relative to the previous rolling high (current candle excluded)
+- **Relative volume:** closed-candle volume against a rolling average
+- **Volatility:** ATR as a percentage of price for estimated risk levels
 
-The project deliberately has **no live trading path**. Never use live Binance credentials with the demo commands; demo credentials belong only in local environment variables..
+Signals are based on closed candles to avoid using unfinished candle values. A high score means the market matches the coded rules; it is not a calibrated win probability. Fees, spreads, slippage, gaps, and exchange constraints can materially change results.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `scan` | Scan and rank market signals |
+| `backtest` | Run historical strategy evaluation |
+| `paper` / `paper-status` | Use the project's separate local SQLite paper simulator |
+| `demo-balance` | Read balance from connected Binance Spot Demo account |
+| `demo-order SYMBOL SIDE AMOUNT` | Manually submit a demo order |
+| `demo-auto` | Run automatic demo signal/order loop |
+
+The local `paper` simulator and Binance Demo account are distinct. See CLI help for current options:
+```bash
+python -m marketbot --help
+python -m marketbot demo-auto --help
+```
+
+## Safety and current limitations
+
+- No live order execution, futures, margin, leverage, or short selling.
+- Demo stop/target monitoring is polling-based; no exchange-hosted protective orders.
+- No news/social sentiment, on-chain data, or token fundamental analysis.
+- No guaranteed pump, rug-pull, or loss prediction.
+- Strategy profitability has not been established.
+
+Before considering any real-money system, require out-of-sample and walk-forward testing across market regimes; realistic fees/spread/slippage; fixed-risk position sizing; daily-loss, open-risk, and correlation limits; robust order reconciliation/retries; a kill switch; and extended demo evaluation. Keep API keys withdrawal-disabled and out of source control.
 
 ## Tests
 
+Run the suite:
 ```bash
 pytest
 ```
-
-## Repository topics
-
-`cryptocurrency`, `binance`, `trading-bot`, `market-scanner`, `technical-analysis`, `python`, `algorithmic-trading`, `risk-management`, `backtesting`
 
 ## License
 
