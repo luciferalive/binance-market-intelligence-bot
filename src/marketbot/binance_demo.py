@@ -1,7 +1,7 @@
-"""Explicitly sandboxed Binance Spot demo account adapter.
+"""Explicitly connected Binance Spot Demo Trading adapter.
 
-This module never permits live trading: sandbox mode is enabled before any
-private API call, and credentials are read from environment variables only.
+This module refuses to fall back to live endpoints or generic testnet routing.
+Credentials are read from environment variables only.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 
 
 class BinanceSpotDemo:
-    """Thin CCXT adapter for Binance Spot demo trading."""
+    """CCXT adapter that explicitly enables Binance Demo Trading."""
 
     def __init__(self, api_key: str | None = None, secret: str | None = None):
         key = api_key or os.getenv("BINANCE_DEMO_API_KEY")
@@ -20,6 +20,7 @@ class BinanceSpotDemo:
                 "Missing demo credentials. Set BINANCE_DEMO_API_KEY and "
                 "BINANCE_DEMO_API_SECRET in your local environment."
             )
+
         import ccxt
 
         self.exchange = ccxt.binance({
@@ -28,21 +29,29 @@ class BinanceSpotDemo:
             "enableRateLimit": True,
             "options": {"defaultType": "spot"},
         })
-        # Enable sandbox immediately after constructing the exchange and before
-        # loading markets or making any request.
-        self.exchange.set_sandbox_mode(True)
+
+        # Binance Demo Trading is not interchangeable with the old Spot Testnet.
+        # Fail closed if this CCXT version cannot select the demo environment.
+        enable_demo = getattr(self.exchange, "enable_demo_trading", None)
+        if not callable(enable_demo):
+            raise RuntimeError(
+                "Your CCXT version lacks Binance Demo Trading support. "
+                "Upgrade CCXT; refusing to use set_sandbox_mode() as a fallback."
+            )
+        enable_demo(True)
 
     def account_balance(self) -> dict[str, Any]:
-        """Return demo-account balances, never live-account balances."""
+        """Return balances from the connected Binance Spot Demo account."""
         return self.exchange.fetch_balance()
 
     def market_order(self, symbol: str, side: str, amount: float) -> dict[str, Any]:
-        """Submit a market order to the sandbox only."""
+        """Submit a market order to Binance Demo Trading only."""
         if side not in {"buy", "sell"}:
             raise ValueError("side must be 'buy' or 'sell'")
         if amount <= 0:
             raise ValueError("amount must be positive")
         self.exchange.load_markets()
-        if symbol not in self.exchange.markets:
-            raise ValueError(f"Market {symbol} is not available on Binance Spot demo")
+        market = self.exchange.market(symbol)
+        if not market.get("spot"):
+            raise ValueError(f"{symbol} is not a Spot market")
         return self.exchange.create_order(symbol, "market", side, amount)
