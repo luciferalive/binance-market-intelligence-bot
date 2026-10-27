@@ -9,7 +9,6 @@ import os
 from typing import Any
 
 
-
 class BinanceSpotDemo:
     """CCXT adapter that explicitly enables Binance Demo Trading."""
 
