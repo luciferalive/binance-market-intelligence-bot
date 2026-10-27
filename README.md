@@ -7,6 +7,46 @@ Scan a changing universe of Binance Spot pairs, rank setups using technical sign
 > [!WARNING]
 > Experimental software, not financial advice. Signals are rules-based hypotheses, not predictions or a claim of profitability. Demo exits are polling-based, not exchange-hosted protective orders. The bot can miss an exit or receive a worse price if it is offline or markets move quickly.
 
+## Market Desk dashboard (new)
+
+One local web page with four tabs: your **Binance portfolio**, **trending meme coins with rug pull checks**, a **pump and dump watch** on Binance Spot, and a **token checker** you can paste any contract address into.
+
+```bash
+pip install -e ".[dev]"
+python -m marketbot dashboard          # then open http://127.0.0.1:8765
+```
+
+| Tab | What you get |
+| --- | --- |
+| Portfolio | Balances, total value, 24h change, allocation, average cost, realized and unrealized PnL, concentration warnings |
+| Meme coins | New and promoted tokens (DexScreener) ranked by **heat**, each with a **rug risk** level, a plain-language reason list, and a one-click news and company-interest lookup. Also CoinGecko trending and established memes, marked "on Binance" or not |
+| Pump & dump watch | Binance USDT markets labelled **Pump starting / Building / Already extended / Dump risk / Dumping** from volume, buying share, RSI and distance from the peak |
+| Check a token | Name, ticker or contract address in, risk checks and evidence out |
+
+**How to read it.** *Heat* measures attention and momentum only. *Rug risk* comes from contract checks (honeypot simulation, mint and ownership powers, taxes, liquidity locks, holder concentration) plus market checks (thin liquidity, brand-new pair). A coin can be both hot and a trap, so they are two separate numbers. Missing data raises risk and never produces "Low". Even "Low" means only that none of the checks we can run found a problem. Nothing here predicts a pump, and the project never says "buy".
+
+**Portfolio setup (read-only).**
+
+1. In Binance open **Account > API Management**, create a key, and enable **Enable Reading only**. Keep trading, withdrawals and transfers off, and restrict the key to your IP.
+2. Copy `.env.example` to `.env` and set `BINANCE_API_KEY` and `BINANCE_API_SECRET`. `.env` is git-ignored.
+3. Restart the dashboard.
+
+The portfolio client can only send GET requests and has no order or withdrawal code at all. On every load it asks Binance what the key may do and **refuses to run if withdrawals are enabled**. The dashboard only listens on `127.0.0.1`, because it has no login.
+
+PnL uses average cost from your Binance spot trade history (USDT, USDC and FDUSD pairs). Coins that arrived by deposit, Earn, Convert or airdrop have no trade record, so the table shows how much of each position the history explains.
+
+Terminal versions of each tab:
+
+```bash
+python -m marketbot memes --top 15
+python -m marketbot check PEPE            # or a contract address
+python -m marketbot pumps --memes-only
+python -m marketbot news "Bonk"
+python -m marketbot portfolio
+```
+
+Data sources are free and need no key: DexScreener, GoPlus Security, CoinGecko (an optional free key in `.env` raises its rate limit), Google News RSS and Binance public endpoints. Each panel is cached for a few minutes to stay inside free rate limits.
+
 ## What it does
 
 | Feature | Details |
@@ -127,7 +167,8 @@ python -m marketbot demo-auto --help
 
 - No live order execution, futures, margin, leverage, or short selling.
 - Demo stop/target monitoring is polling-based; no exchange-hosted protective orders.
-- No news/social sentiment, on-chain data, or token fundamental analysis.
+- News is keyword-tagged headlines only: no social sentiment, no wallet-level on-chain forensics (for example fresh-wallet team dumps), and no token fundamental analysis.
+- Rug checks remove obvious traps. They cannot catch social-engineering rugs, brand-new exploits, or insiders who sell slowly. Meme coins can go to zero even when every check passes.
 - No guaranteed pump, rug-pull, or loss prediction.
 - Strategy profitability has not been established.
 
