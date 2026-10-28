@@ -16,3 +16,5 @@ reports/
 *.csv
 .DS_Store
 Thumbs.db
+data/
+*.sqlite3
