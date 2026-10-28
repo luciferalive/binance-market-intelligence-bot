@@ -6,16 +6,18 @@ Security model
   any other address.
 * Rejects requests whose ``Host`` header is not a loopback name (blocks DNS-rebinding, where a
   malicious website tricks your browser into talking to this local server).
-* Only GET is served. The portfolio client is read-only (see ``portfolio.py``).
+* GET only reads. POST changes local state only, needs a per-run session token, a same-origin
+  request and JSON; nothing can place a real order. The portfolio client is read-only.
 * A strict Content-Security-Policy and no inline scripts; the front end builds the page with
   ``textContent`` because token names and news headlines are attacker-controlled text.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import math
 import re
-import threading
+import secrets
 import time
 import urllib.parse
 from collections.abc import Callable
@@ -25,9 +27,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from . import api, memecoins, news, portfolio, pumpwatch, rugcheck, settings
 from . import binance_public as bp
-from . import memecoins, news, portfolio, pumpwatch, rugcheck, settings
+from .cache import TTLCache
+from .desk import Desk
+from .investigate import NotFound
 from .net import HttpError, get_json, get_text
+from .store import Store
 
 WEB_DIR = Path(__file__).parent / "web"
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}  # accepted in the Host header
@@ -60,44 +66,6 @@ def jsonable(value: Any) -> Any:
     return value
 
 
-class TTLCache:
-    """Per-key cache with a lock per key, so concurrent requests share one upstream call."""
-
-    def __init__(self, clock: Callable[[], float] = time.monotonic, max_entries: int = 200):
-        self._clock = clock
-        self._max_entries = max_entries
-        self._data: dict[str, tuple[float, Any]] = {}
-        self._locks: dict[str, threading.Lock] = {}
-        self._guard = threading.Lock()
-
-    def _evict(self) -> None:
-        """Drop the oldest idle entries so arbitrary query strings cannot grow memory forever."""
-        excess = len(self._locks) - self._max_entries
-        if excess <= 0:
-            return
-        oldest = sorted(self._data, key=lambda k: self._data[k][0])
-        for key in oldest:
-            if excess <= 0:
-                break
-            lock = self._locks.get(key)
-            if lock is not None and not lock.locked():
-                self._data.pop(key, None)
-                self._locks.pop(key, None)
-                excess -= 1
-
-    def get(self, key: str, ttl: float, factory: Callable[[], Any]) -> Any:
-        with self._guard:
-            lock = self._locks.setdefault(key, threading.Lock())
-            self._evict()
-        with lock:
-            entry = self._data.get(key)
-            if entry and self._clock() - entry[0] < ttl:
-                return entry[1]
-            value = factory()
-            self._data[key] = (self._clock(), value)
-            return value
-
-
 class Services:
     """Everything the HTTP handler needs. All network access is injectable for tests."""
 
@@ -108,18 +76,27 @@ class Services:
         credentials: tuple[str, str] | None = None,
         allow_unverified_key: bool = False,
         coingecko_key: str | None = None,
+        desk: Desk | None = None,
     ):
         self.getter = getter or get_json
         self.text_getter = text_getter or get_text
         self.cache = TTLCache()
         self.coingecko_key = coingecko_key
         self.allow_unverified_key = allow_unverified_key
+        self._desk = desk
+        self.session_token = secrets.token_urlsafe(32)
         self.trade_cache: dict[str, dict] = {}
         self.trade_cache_time = time.monotonic()
         self.client = (
             portfolio.BinanceReadOnlyClient(credentials[0], credentials[1], getter=self.getter)
             if credentials else None
         )
+
+    @property
+    def desk(self) -> Desk:
+        if self._desk is None:  # tests and ad-hoc use: in-memory state, no gateway pacing
+            self._desk = Desk(self.getter, self.text_getter, Store(":memory:"), use_gateway=False)
+        return self._desk
 
     def status(self) -> dict:
         return {"portfolio_configured": self.client is not None}
@@ -244,6 +221,10 @@ def _hostname(host_header: str) -> str:
     return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
 
 
+MAX_BODY = 16 * 1024
+WEB_FILES = ("index.html", "app.css", "app.js", "charts.js", "views.js", "views2.js")
+
+
 def make_handler(services: Services, files: dict[str, tuple[bytes, str]]) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "MarketDesk"
@@ -268,25 +249,47 @@ def make_handler(services: Services, files: dict[str, tuple[bytes, str]]) -> typ
             body = json.dumps(jsonable(payload), allow_nan=False).encode("utf-8")
             self._send(status, body, "application/json; charset=utf-8")
 
-        def do_GET(self) -> None:
+        def _host_ok(self) -> bool:
             if _hostname(self.headers.get("Host", "")) not in LOOPBACK_HOSTS:
                 self._json(HTTPStatus.FORBIDDEN, {"error": "Only loopback hosts are allowed."})
+                return False
+            return True
+
+        def _same_site(self) -> bool:
+            if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+                self._json(HTTPStatus.FORBIDDEN, {"error": "Cross-site requests are not allowed."})
+                return False
+            return True
+
+        def _fail(self, exc: Exception) -> None:
+            if isinstance(exc, portfolio.UnsafeKeyError):
+                self._json(HTTPStatus.FORBIDDEN, {"error": str(exc), "unsafe_key": True})
+            elif isinstance(exc, NotFound):
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            elif isinstance(exc, (ValueError, KeyError)):
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc).strip("'") or "Bad request."})
+            elif isinstance(exc, HttpError):
+                self._json(HTTPStatus.BAD_GATEWAY, {"error": f"A data source failed: {exc}"})
+            else:
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Unexpected error. See the terminal."})
+                raise exc
+
+        def do_GET(self) -> None:
+            if not self._host_ok():
                 return
             parsed = urllib.parse.urlparse(self.path)
             path = parsed.path
             query = urllib.parse.parse_qs(parsed.query)
             if path in {"/", "/index.html"}:
                 path = "/index.html"
-            if path in {"/index.html", "/app.js", "/app.css"}:
+            if path.lstrip("/") in files and not path.startswith("/api/"):
                 body, content_type = files[path.lstrip("/")]
                 self._send(HTTPStatus.OK, body, content_type)
                 return
             if not path.startswith("/api/"):
                 self._json(HTTPStatus.NOT_FOUND, {"error": "Not found."})
                 return
-            if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
-                # Another website is making your browser call this local server.
-                self._json(HTTPStatus.FORBIDDEN, {"error": "Cross-site requests are not allowed."})
+            if not self._same_site():
                 return
             try:
                 if path == "/api/status":
@@ -304,17 +307,55 @@ def make_handler(services: Services, files: dict[str, tuple[bytes, str]]) -> typ
                         return
                     payload = services.news(text) if path == "/api/news" else services.token_check(text)
                 else:
+                    payload = api.route_get(services, path, query)
+                    if payload is None:
+                        self._json(HTTPStatus.NOT_FOUND, {"error": "Not found."})
+                        return
+            except Exception as exc:  # noqa: BLE001  mapped to a status in _fail, unknown ones re-raised
+                self._fail(exc)
+                return
+            self._json(HTTPStatus.OK, payload)
+
+        def do_POST(self) -> None:
+            if not self._host_ok() or not self._same_site():
+                return
+            parsed = urllib.parse.urlparse(self.path)
+            if not parsed.path.startswith("/api/"):
+                self._json(HTTPStatus.NOT_FOUND, {"error": "Not found."})
+                return
+            origin = self.headers.get("Origin")
+            if origin and _hostname(urllib.parse.urlparse(origin).netloc) not in LOOPBACK_HOSTS:
+                self._json(HTTPStatus.FORBIDDEN, {"error": "Foreign origin."})
+                return
+            token = self.headers.get("X-Desk-Token", "")
+            if not hmac.compare_digest(token.encode(), services.session_token.encode()):
+                self._json(HTTPStatus.FORBIDDEN, {"error": "Missing or wrong session token. Reload the page."})
+                return
+            if not self.headers.get("Content-Type", "").lower().startswith("application/json"):
+                self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "Send application/json."})
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = -1
+            if not 0 <= length <= MAX_BODY:
+                self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "Body too large or length missing."})
+                return
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(body, dict):
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "Body must be a JSON object."})
+                    return
+                payload = api.route_post(services, parsed.path, body)
+                if payload is None:
                     self._json(HTTPStatus.NOT_FOUND, {"error": "Not found."})
                     return
-            except portfolio.UnsafeKeyError as exc:
-                self._json(HTTPStatus.FORBIDDEN, {"error": str(exc), "unsafe_key": True})
+            except json.JSONDecodeError:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON."})
                 return
-            except HttpError as exc:
-                self._json(HTTPStatus.BAD_GATEWAY, {"error": f"A data source failed: {exc}"})
+            except Exception as exc:  # noqa: BLE001
+                self._fail(exc)
                 return
-            except Exception:
-                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Unexpected error. See the terminal."})
-                raise
             self._json(HTTPStatus.OK, payload)
 
     return Handler
@@ -322,8 +363,10 @@ def make_handler(services: Services, files: dict[str, tuple[bytes, str]]) -> typ
 
 def load_web_files() -> dict[str, tuple[bytes, str]]:
     files = {}
-    for name in ("index.html", "app.js", "app.css"):
+    for name in WEB_FILES:
         file = WEB_DIR / name
+        if not file.exists():
+            continue
         files[name] = (file.read_bytes(), CONTENT_TYPES[file.suffix])
     return files
 
@@ -344,12 +387,16 @@ def create_server(
 def serve(host: str = "127.0.0.1", port: int = 8765, allow_unverified_key: bool = False) -> None:
     settings.load_dotenv(".env")
     credentials = settings.binance_credentials()
+    desk = Desk(get_json, get_text)
     services = Services(
+        desk=desk,
         credentials=credentials,
         allow_unverified_key=allow_unverified_key,
         coingecko_key=settings.coingecko_api_key(),
     )
     server = create_server(services, host, port)
+    if desk.store.get_setting("watcher_enabled"):
+        desk.start_watcher()
     print(f"Market Desk running at http://{host}:{server.server_address[1]}  (Ctrl+C to stop)")
     if credentials is None:
         print("Portfolio tab is off: set BINANCE_API_KEY and BINANCE_API_SECRET (read-only key) in .env")

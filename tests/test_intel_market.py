@@ -340,7 +340,7 @@ def test_dashboard_end_to_end_with_fake_network():
         assert _fetch(base + "/api/nope")[0] == 404
         assert _fetch(base + "/", headers={"Host": "evil.example.com"})[0] == 403
         assert _fetch(base + "/api/portfolio", headers={"Host": "evil.example.com:8765"})[0] == 403
-        assert _fetch(base + "/api/status", method="POST")[0] in {405, 501}
+        assert _fetch(base + "/api/status", method="POST")[0] in {403, 405, 501}
     finally:
         server.shutdown()
         server.server_close()
