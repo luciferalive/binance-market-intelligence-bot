@@ -1,16 +1,16 @@
 <div align="center">
 
-# 🛰️ Binance Market Intelligence Bot
+# 🛰️ MemeScope: Binance Market Intelligence Bot
 
-### Market Desk: see what is hot, what is a trap, and what you actually hold. In one local dashboard.
+### A local research terminal: find new tokens, spot traps early, investigate, and practise with paper trades.
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Tests](https://img.shields.io/badge/new%20tests-72%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/new%20tests-110%2B-brightgreen)
 ![Portfolio access](https://img.shields.io/badge/Binance%20key-read--only-blue)
-![Trading](https://img.shields.io/badge/live%20trading-none-lightgrey)
+![Trading](https://img.shields.io/badge/trading-paper%20only-lightgrey)
 
-**Trending meme coins** · **Rug pull checks** · **Pump & dump watch** · **Binance portfolio** · **News & company interest**
+**Token scanner** · **Rug pull detector** · **Smart money** · **Token investigation** · **Narratives** · **Paper trading** · **Alerts** · **Binance portfolio**
 
 </div>
 
@@ -36,6 +36,53 @@
 
 ---
 
+## 🛰️ MemeScope terminal (new)
+
+A dark, dense terminal-style interface with a fixed sidebar, chain selector, **PAPER MODE** badge, data-source status, an **emergency stop**, and a live alerts panel.
+
+<table>
+<tr>
+<td width="50%"><b>Command Center</b><br><img src="docs/images/command.png" alt="Command Center"></td>
+<td width="50%"><b>Token Scanner</b>: 3 modes, filters, expandable score breakdown<br><img src="docs/images/scanner.png" alt="Token Scanner"></td>
+</tr>
+<tr>
+<td width="50%"><b>Token Investigation</b>: chart, snapshot, paper ticket<br><img src="docs/images/invest.png" alt="Token Investigation"></td>
+<td width="50%"><b>AI Investigation tab</b>: explainable, rule-based<br><img src="docs/images/invest-ai.png" alt="AI investigation"></td>
+</tr>
+</table>
+
+| Area | What it does | Code |
+| --- | --- | --- |
+| **Token Scanner / New Launches** | New and trending pools (Solana, Base, Ethereum, BNB Chain) in three modes: *Fresh launches*, *Momentum*, *Smart money*. Each has its own ranking rules. Full filter set (age, liquidity, buyers, volume acceleration, risk, confidence, holders, …) | `discover.py`, `scoring.py`, `geckoterminal.py` |
+| **Rug Pull Detector** | Per-chain contract checks (mint/freeze authority on Solana; honeypot, taxes, proxy, hidden owner on EVM), holder concentration, LP lock. Missing data counts as risky | `security.py`, `rugcheck.py` |
+| **Opportunity score** | Itemised, explainable points per component, then **caps** (critical risk = 0, high risk ≤ 35, brand-new pool ≤ 60, low data confidence ≤ 60). A **data confidence** rating sits next to every score | `scoring.py` |
+| **Token Investigation** | 7 tabs: Overview (candlesticks + volume), Security, Holders, Smart money, Liquidity (estimated exit cost), News and social, AI investigation | `investigate.py` |
+| **Smart Money** | Track wallets you add; see their buys and sells in a pool's recent trades | `investigate.py` |
+| **Narratives** | Themes grouped from token names with the trading activity under each | `narratives.py` |
+| **Paper trading** | Simulated entries and exits with fees and price impact, take-profit, stop-loss, trailing stop, time stop, position and loss limits, emergency stop. **Live trading is not implemented** | `memepaper.py` |
+| **Alerts** | Critical / high / info, de-duplicated, critical cannot be muted. Optional Telegram or webhook | `alerts.py` |
+| **System** | Data-source capability matrix, per-source health and rate limits, settings | `desk.py`, `gateway.py` |
+
+### Optional: Telegram alerts
+
+Add to `.env` (never commit it), restart, then use **Alerts → Send test alert**:
+
+```
+TELEGRAM_BOT_TOKEN=123456:your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+# or a generic https webhook (Discord, Slack, ...):
+ALERT_WEBHOOK_URL=https://...
+```
+
+### What is *not* built (and is labelled as such in the app)
+
+Wallet clusters, social/mention tracking, wallet profit history, Strategy Lab, backtesting of launches, and live trading. These need data providers or history this project does not have, so the pages say "planned" or "not connected" instead of showing made-up numbers.
+
+> [!IMPORTANT]
+> **First run on real data:** the GeckoTerminal parsers were written from the public API documentation and tested against recorded-shape fixtures, not the live service (the build sandbox had no internet). If a table is empty or the System Health page shows source errors, open an issue with the message shown. Scores are heuristics, not predictions.
+
+---
+
 ## 🚀 Quick start
 
 Needs **Python 3.11+**.
@@ -48,9 +95,10 @@ source .venv/bin/activate            # Windows PowerShell: .venv\Scripts\Activat
 pip install -e ".[dev]"
 
 python -m marketbot dashboard        # then open http://127.0.0.1:8765
+# Data is stored locally in data/marketdesk.sqlite3 (git-ignored).
 ```
 
-The **Meme coins**, **Pump & dump** and **Check a token** tabs work immediately with no keys. The **Portfolio** tab turns on after you add a read-only Binance key (see [Portfolio setup](#-portfolio-setup-read-only)).
+Everything except the Binance portfolio and Telegram alerts works with no keys. The **Portfolio** tab turns on after you add a read-only Binance key (see [Portfolio setup](#-portfolio-setup-read-only)).
 
 ---
 

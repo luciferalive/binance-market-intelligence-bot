@@ -165,10 +165,11 @@ def evaluate(engine: AlertEngine, *, scored: list[dict], watch_keys: set[str], h
             n += engine.emit("high", "risk_high", f"{symbol}: high risk flag", reasons, key) is not None
         pos = held.get(key)
         liq = pool.get("liquidity_usd")
-        if pos and liq and pos.get("last_liquidity") and liq < 0.7 * pos["last_liquidity"]:
-            drop = (1 - liq / pos["last_liquidity"]) * 100
+        ref = (pos or {}).get("entry_liquidity") or (pos or {}).get("last_liquidity")
+        if pos and liq and ref and liq < 0.7 * ref:
+            drop = (1 - liq / ref) * 100
             n += engine.emit("critical", "liquidity_drop", f"{symbol}: liquidity down {drop:.0f}%",
-                             "Liquidity fell since the last reading. The exit cost of a held position rose.", key) is not None
+                             "Liquidity is well below where it was when the paper position was opened. The exit cost rose.", key) is not None
         if item.get("label") == "CANDIDATE" and (item.get("confidence") or {}).get("level") == "HIGH" and not watched:
             n += engine.emit("high", "candidate", f"{symbol}: new candidate (score {item.get('opportunity')})",
                              "Passed the risk gates with high data confidence. Research it; this is not advice.",

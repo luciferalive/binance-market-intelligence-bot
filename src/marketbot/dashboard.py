@@ -222,13 +222,14 @@ def _hostname(host_header: str) -> str:
 
 
 MAX_BODY = 16 * 1024
-WEB_FILES = ("index.html", "app.css", "app.js", "charts.js", "views.js", "views2.js")
+WEB_FILES = ("index.html", "app.css", "app.js", "charts.js", "legacy.js", "views.js", "views2.js", "boot.js")
 
 
 def make_handler(services: Services, files: dict[str, tuple[bytes, str]]) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "MarketDesk"
         sys_version = ""
+        timeout = 15  # a client that stalls mid-request must not hold a thread forever
 
         def log_message(self, format: str, *args: Any) -> None:
             return  # keep the terminal quiet; errors are reported to the browser

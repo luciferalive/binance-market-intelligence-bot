@@ -72,3 +72,9 @@ def test_evaluate_rules():
     held = {"solana:p": {"last_liquidity": 200_000}}
     assert evaluate(eng, scored=[item(liq=100_000)], watch_keys=set(), held=held) == 1
     assert evaluate(eng, scored=[item(key="solana:z", label="CANDIDATE")], watch_keys=set(), held={}) == 1
+
+
+def test_liquidity_drop_measured_against_entry_not_last_reading():
+    eng, _, _, _ = make()
+    held = {"solana:p": {"last_liquidity": 90_000, "entry_liquidity": 200_000}}
+    assert evaluate(eng, scored=[item(liq=100_000)], watch_keys=set(), held=held) == 1

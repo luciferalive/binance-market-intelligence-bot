@@ -115,3 +115,52 @@ def test_store_settings_snapshots_watchlist():
     assert store.watchlist() == []
     store.wallet_add("w1", "solana", "whale")
     assert store.wallets("solana")[0]["label"] == "whale"
+
+
+def test_concurrent_sells_credit_cash_once():
+    import threading
+    eng, store, clock = make()
+    buy(eng, clock, usd=400)
+    after_buy = eng.cash()
+    results = []
+    barrier = threading.Barrier(4)
+
+    def go():
+        barrier.wait()
+        results.append(eng.sell("solana:p1", price=1.0, liquidity=200_000))
+
+    threads = [threading.Thread(target=go) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sum(1 for r in results if r["ok"]) == 1
+    assert len(store.query("SELECT id FROM paper_orders WHERE side='sell'")) == 1
+    assert eng.cash() < after_buy + 400  # credited once, minus costs
+
+
+def test_concurrent_buys_cannot_overdraw_cash():
+    import threading
+    eng, store, clock = make()
+    store.set_setting("paper_capital_usd", 500.0)
+    results = []
+    barrier = threading.Barrier(4)
+
+    def go(i):
+        barrier.wait()
+        results.append(buy(eng, clock, usd=500, pool=f"q{i}"))
+
+    threads = [threading.Thread(target=go, args=(i,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sum(1 for r in results if r["ok"]) == 1
+    assert eng.cash() >= -1e-9
+
+
+def test_tiny_buy_refused_and_entry_liquidity_recorded():
+    eng, store, clock = make()
+    assert not buy(eng, clock, usd=0.1)["ok"]
+    assert buy(eng, clock, usd=100, liquidity=150_000)["ok"]
+    assert store.one("SELECT entry_liquidity FROM paper_positions")["entry_liquidity"] == 150_000

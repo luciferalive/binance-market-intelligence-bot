@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS paper_orders(
 CREATE TABLE IF NOT EXISTS paper_positions(
   key TEXT PRIMARY KEY, chain TEXT NOT NULL, pool TEXT NOT NULL, token TEXT NOT NULL, symbol TEXT, name TEXT,
   qty REAL NOT NULL, cost_usd REAL NOT NULL, opened_ts REAL NOT NULL, tp_pct REAL, sl_pct REAL, trail_pct REAL,
-  peak_price REAL, max_hold_min REAL, last_price REAL, last_liquidity REAL, last_ts REAL);
+  peak_price REAL, max_hold_min REAL, last_price REAL, last_liquidity REAL, last_ts REAL,
+  entry_liquidity REAL);
 CREATE TABLE IF NOT EXISTS journal(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, event TEXT NOT NULL, key TEXT, symbol TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
@@ -78,6 +79,11 @@ class Store:
         with self._lock:
             self._db.executescript(SCHEMA)
             self._db.commit()
+
+    @property
+    def lock(self) -> threading.RLock:
+        """Hold this to make a read-check-write sequence atomic across threads."""
+        return self._lock
 
     # -- plumbing ----------------------------------------------------------------
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:

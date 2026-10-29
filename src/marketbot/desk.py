@@ -125,7 +125,7 @@ class Desk:
         fresh = self.scanner.scan(chain, "fresh", Filters(), limit=12)
         momentum = self.scanner.scan(chain, "momentum", Filters(), limit=12)
         themes = self.narratives(chain)["themes"][:6]
-        cands = [r for r in fresh["rows"] + momentum["rows"] if r["label"] == "CANDIDATE"]
+        cands = list({r["key"]: r for r in fresh["rows"] + momentum["rows"] if r["label"] == "CANDIDATE"}.values())
         risky = [r for r in fresh["rows"] if r["risk"]["level"] in ("CRITICAL", "HIGH", "UNVERIFIED")]
         return {
             "chain": chain, "paper": self.paper.summary(), "fresh": fresh["rows"][:8], "momentum": momentum["rows"][:8],
@@ -143,8 +143,12 @@ class Desk:
         row = self.investigator.resolve(chain, ident)
         views, _ = sec.fetch_views(chain, [row], self.investigator.getter, self._sec_cache, self.clock())
         view = views[row.token_address.lower()]
-        if view.report.level in ("CRITICAL",):
-            return {"ok": False, "problems": ["Critical security flag: paper entry blocked."]}
+        if not view.available or view.report.level in ("CRITICAL", "HIGH", "UNVERIFIED"):
+            reason = ("Security data is missing, so the token is treated as risky."
+                      if not view.available else f"Risk level is {view.report.level}.")
+            self.store.journal_add("entry_refused", row.key, row.symbol, {"problems": [reason]})
+            return {"ok": False, "problems": [reason + " Paper entries are blocked for risky or unverified tokens."],
+                    "risk_level": view.report.level}
         res = self.paper.buy(
             chain=chain, pool=row.pool_address, token=row.token_address, symbol=row.symbol, name=row.name,
             usd=_num(body.get("usd")), price=row.price_usd, liquidity=row.liquidity_usd, price_ts=row.fetched_at,
@@ -170,29 +174,47 @@ class Desk:
     def watch_once(self) -> dict:
         chain = self.store.get_setting("chain")
         held = {p["key"]: p for p in self.paper.positions()}
+        watch = {w["key"] for w in self.store.watchlist()}
         alerts = 0
+        errors: list[str] = []
+        scored: list[dict] = []
         try:
-            scored: list[dict] = []
             for mode in ("fresh", "momentum"):
                 scored += self.scanner.scan(chain, mode, Filters(), limit=60)["rows"]
-            watch = {w["key"] for w in self.store.watchlist()}
-            alerts = evaluate(self.alerts, scored=scored, watch_keys=watch, held=held)
-            for key, pos in held.items():
-                if pos["chain"] != chain:
-                    continue
-                try:
-                    row = self.investigator.resolve(pos["chain"], pos["pool"])
-                except (HttpError, LookupError, ValueError):
-                    continue
-                reason = self.paper.mark(key, row.price_usd, row.liquidity_usd)
+            alerts += evaluate(self.alerts, scored=scored, watch_keys=watch, held=held)
+        except (HttpError, ValueError) as exc:
+            errors.append(str(exc))
+        # Held and watched tokens are checked directly, on their own chain, whether or not they
+        # still appear in the scan lists. Switching the chain dropdown must not stop exits.
+        seen = {r["key"] for r in scored}
+        for key in set(held) | watch:
+            pos = held.get(key)
+            item = self._direct_check(key, pos)
+            if item is None:
+                continue
+            row_dict, scored_item = item
+            if key not in seen:
+                alerts += evaluate(self.alerts, scored=[scored_item], watch_keys=watch, held=held)
+            if pos:
+                reason = self.paper.mark(key, row_dict["price_usd"], row_dict["liquidity_usd"])
                 if reason:
                     alerts += self.alerts.emit("high", "paper_exit", f"{pos['symbol']}: paper exit ({reason})",
                                                "Simulated position closed by its rule.", key) is not None
-            self.last_watch = {"at": self.clock(), "error": None, "alerts": alerts}
-        except (HttpError, ValueError) as exc:
-            self.last_watch = {"at": self.clock(), "error": str(exc), "alerts": alerts}
+        self.last_watch = {"at": self.clock(), "error": "; ".join(errors) or None, "alerts": alerts}
         self.store.prune_snapshots()
         return self.last_watch
+
+    def _direct_check(self, key: str, pos: dict | None) -> tuple[dict, dict] | None:
+        chain, _, pool = key.partition(":")
+        if chain not in CHAINS or not pool:
+            return None
+        try:
+            row = self.investigator.resolve(chain, pool)
+            views, _ = sec.fetch_views(chain, [row], self.investigator.getter, self._sec_cache, self.clock())
+        except (HttpError, LookupError, ValueError):
+            return None
+        item = scoring.score_pool("fresh", row, views[row.token_address.lower()], {}, self.clock()).to_dict()
+        return row.to_dict(), item
 
     def start_watcher(self) -> None:
         if self._watch_thread and self._watch_thread.is_alive():
