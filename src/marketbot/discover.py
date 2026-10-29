@@ -272,7 +272,9 @@ class Scanner:
                 self.record(item)
             if passes_scored(item, filters, growth):
                 scored.append(item)
-        scored.sort(key=lambda s: (-1 if s.opportunity is None else s.opportunity, s.row.liquidity_usd or 0), reverse=True)
+        scored.sort(key=lambda s: (-1 if s.opportunity is None else s.opportunity,
+                                   -1 if s.opportunity_raw is None else s.opportunity_raw,
+                                   s.row.liquidity_usd or 0), reverse=True)
 
         return {
             "mode": mode, "chain": chain, "rows": [s.to_dict() for s in scored[:limit]],

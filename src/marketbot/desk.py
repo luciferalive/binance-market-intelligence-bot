@@ -125,7 +125,7 @@ class Desk:
         fresh = self.scanner.scan(chain, "fresh", Filters(), limit=12)
         momentum = self.scanner.scan(chain, "momentum", Filters(), limit=12)
         themes = self.narratives(chain)["themes"][:6]
-        cands = [r for r in fresh["rows"] + momentum["rows"] if r["label"] == "CANDIDATE"]
+        cands = list({r["key"]: r for r in fresh["rows"] + momentum["rows"] if r["label"] == "CANDIDATE"}.values())
         risky = [r for r in fresh["rows"] if r["risk"]["level"] in ("CRITICAL", "HIGH", "UNVERIFIED")]
         return {
             "chain": chain, "paper": self.paper.summary(), "fresh": fresh["rows"][:8], "momentum": momentum["rows"][:8],

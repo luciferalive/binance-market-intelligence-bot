@@ -321,9 +321,11 @@ def test_dashboard_end_to_end_with_fake_network():
     server, base = _serve(services)
     try:
         status, headers, body = _fetch(base + "/")
-        assert status == 200 and b"Market Desk" in body
+        assert status == 200 and b"MemeScope" in body
         assert "script-src 'self'" in headers["Content-Security-Policy"]
-        assert b"innerHTML" not in _fetch(base + "/app.js")[2]
+        for name in ("app.js", "charts.js", "legacy.js", "views.js", "views2.js", "boot.js"):
+            script = _fetch(base + "/" + name)[2]
+            assert script and b"innerHTML" not in script and b"insertAdjacentHTML" not in script and b"eval(" not in script
 
         status, _, body = _fetch(base + "/api/memes")
         data = json.loads(body)
