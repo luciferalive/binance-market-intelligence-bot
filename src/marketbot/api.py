@@ -37,12 +37,15 @@ def _one(query: dict[str, list[str]], key: str, default: str = "") -> str:
     return (query.get(key) or [default])[0].strip()
 
 
-def chain_of(query_or_body: dict, services: Any) -> str:
+def chain_of(query_or_body: dict, services: Any, from_query: bool = False) -> str:
     raw = query_or_body.get("chain")
-    value = (raw[0] if isinstance(raw, list) and raw else raw) or services.desk.store.get_setting("chain")
-    if value not in CHAINS:
+    if from_query:  # parse_qs gives lists of strings
+        raw = raw[0] if raw else None
+    if raw is None or raw == "":
+        raw = services.desk.store.get_setting("chain")
+    if not isinstance(raw, str) or raw not in CHAINS:
         raise BadRequest("Unknown chain.")
-    return str(value)
+    return raw
 
 
 def route_get(services: Any, path: str, query: dict[str, list[str]]) -> Any:
@@ -51,7 +54,7 @@ def route_get(services: Any, path: str, query: dict[str, list[str]]) -> Any:
         return {"token": services.session_token}
     if path == "/api/meta":
         return desk.meta()
-    chain = chain_of(query, services) if path not in {"/api/health", "/api/alerts", "/api/orders", "/api/journal",
+    chain = chain_of(query, services, True) if path not in {"/api/health", "/api/alerts", "/api/orders", "/api/journal",
                                                      "/api/performance", "/api/settings", "/api/capabilities"} else ""
     if path == "/api/command":
         return desk.command_center(chain)
@@ -159,15 +162,19 @@ def route_post(services: Any, path: str, body: dict) -> Any:
         changed = {}
         for name, value in body.items():
             if name in SETTING_RULES:
+                if name == "paper_capital_usd" and store.one("SELECT id FROM paper_orders LIMIT 1"):
+                    raise BadRequest("Paper capital cannot change after trades exist: it would distort cash and the loss limit.")
                 changed[name] = _coerce(name, value)
             elif name == "chain":
-                if value not in CHAINS:
+                if not isinstance(value, str) or value not in CHAINS:
                     raise BadRequest("Unknown chain.")
                 changed[name] = value
             elif name == "watcher_enabled":
-                changed[name] = bool(value)
+                if not isinstance(value, bool):
+                    raise BadRequest("watcher_enabled must be true or false.")
+                changed[name] = value
             elif name == "alert_telegram_min_level":
-                if value not in LEVELS:
+                if not isinstance(value, str) or value not in LEVELS:
                     raise BadRequest("Unknown level.")
                 changed[name] = value
             elif name == "alert_muted_kinds":

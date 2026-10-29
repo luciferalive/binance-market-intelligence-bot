@@ -103,3 +103,28 @@ def test_alert_test_without_channels_and_health():
     assert call(base, "/api/alerts/test", "POST", {}, token=t)[1]["ok"] is False
     assert call(base, "/api/health")[1]["status"] in {"OK", "DEGRADED"}
     assert call(base, "/api/capabilities")[0] == 200
+
+
+def test_review_regressions_validation():
+    _, base = serve()
+    t = token(base)
+    assert call(base, "/api/wallets/add", "POST", {"chain": "solana", "address": "A" * 20 + "\n"}, token=t)[0] == 400
+    assert call(base, "/api/settings", "POST", {"chain": []}, token=t)[0] == 400
+    assert call(base, "/api/settings", "POST", {"watcher_enabled": "false"}, token=t)[0] == 400
+    assert call(base, "/api/watchlist/add", "POST", {"chain": {}, "id": POOL}, token=t)[0] == 400
+
+
+def test_paper_buy_blocked_without_security_data():
+    _, base = serve()
+    t = token(base)
+    r = call(base, "/api/paper/buy", "POST", {"chain": "solana", "pool": POOL, "usd": 100}, token=t)[1]
+    assert r["ok"] is False and any("risky" in p.lower() or "missing" in p.lower() for p in r["problems"])
+    assert call(base, "/api/paper")[1]["positions"] == []
+
+
+def test_paper_capital_locked_after_trades():
+    services, base = serve()
+    t = token(base)
+    assert call(base, "/api/settings", "POST", {"paper_capital_usd": 5000}, token=t)[0] == 200
+    services.desk.store.execute("INSERT INTO paper_orders(ts,key,symbol,side,usd,qty,price,fee_usd,slippage_pct) VALUES(1,'k','S','buy',1,1,1,0,0)")
+    assert call(base, "/api/settings", "POST", {"paper_capital_usd": 9000}, token=t)[0] == 400

@@ -13,7 +13,7 @@ const ROUTES = {
 
 function parseHash() {
   const [name, ...rest] = (location.hash || "#command").slice(1).split("/");
-  return { name: ROUTES[name] ? name : "command", params: rest.map(decodeURIComponent) };
+  return { name: ROUTES[name] ? name : "command", params: rest.map((x) => { try { return decodeURIComponent(x); } catch (e) { return ""; } }) };
 }
 
 function renderNav() {

@@ -109,8 +109,19 @@ class PaperEngine:
             price: float | None, liquidity: float | None, price_ts: float | None,
             tp_pct: float | None = None, sl_pct: float | None = None, trail_pct: float | None = None,
             max_hold_min: float | None = None, reason: str = "") -> dict[str, Any]:
+        with self.store.lock:  # check and fill must be one atomic step across threads
+            return self._buy_locked(chain=chain, pool=pool, token=token, symbol=symbol, name=name, usd=usd, price=price,
+                                    liquidity=liquidity, price_ts=price_ts, tp_pct=tp_pct, sl_pct=sl_pct,
+                                    trail_pct=trail_pct, max_hold_min=max_hold_min, reason=reason)
+
+    def _buy_locked(self, *, chain: str, pool: str, token: str, symbol: str, name: str, usd: float,
+                    price: float | None, liquidity: float | None, price_ts: float | None,
+                    tp_pct: float | None, sl_pct: float | None, trail_pct: float | None,
+                    max_hold_min: float | None, reason: str) -> dict[str, Any]:
         key = f"{chain}:{pool}"
         problems, impact = self.check_entry(usd, price, liquidity, price_ts, key)
+        if usd > 0 and usd < 4 * float(self.store.get_setting("network_fee_usd")) + 1:
+            problems.append("Size is too small: fees would consume it.")
         if problems:
             self.store.journal_add("entry_refused", key, symbol, {"problems": problems, "usd": usd})
             return {"ok": False, "problems": problems, "impact_pct": impact}
@@ -124,10 +135,10 @@ class PaperEngine:
 
         def work(db):
             db.execute("INSERT INTO paper_positions(key,chain,pool,token,symbol,name,qty,cost_usd,opened_ts,tp_pct,sl_pct,"
-                       "trail_pct,peak_price,max_hold_min,last_price,last_liquidity,last_ts) "
-                       "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       "trail_pct,peak_price,max_hold_min,last_price,last_liquidity,last_ts,entry_liquidity) "
+                       "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (key, chain, pool, token, symbol[:24], name[:60], qty, usd, now, tp_pct, sl_pct, trail_pct,
-                        price, max_hold_min, price, liquidity, now))
+                        price, max_hold_min, price, liquidity, now, liquidity))
             db.execute("INSERT INTO paper_orders(ts,key,symbol,side,usd,qty,price,fee_usd,slippage_pct,reason,realized_pnl) "
                        "VALUES(?,?,?,?,?,?,?,?,?,?,NULL)",
                        (now, key, symbol[:24], "buy", usd, qty, fill, fee, impact, reason[:200]))
@@ -139,6 +150,10 @@ class PaperEngine:
 
     # -- exit -------------------------------------------------------------------
     def sell(self, key: str, *, price: float | None, liquidity: float | None, reason: str = "manual") -> dict[str, Any]:
+        with self.store.lock:  # read, delete and credit must not interleave with another sell
+            return self._sell_locked(key, price, liquidity, reason)
+
+    def _sell_locked(self, key: str, price: float | None, liquidity: float | None, reason: str) -> dict[str, Any]:
         pos = self.store.one("SELECT * FROM paper_positions WHERE key=?", (key,))
         if not pos:
             return {"ok": False, "problems": ["No such paper position."]}

@@ -20,14 +20,14 @@ from .pools import PoolRow, as_int, minutes_since
 
 BASE = "https://api.geckoterminal.com/api/v2"
 HEADERS = {"Accept": "application/json;version=20230302"}
-_ADDRESS = re.compile(r"^[A-Za-z0-9]{20,64}$")
+_ADDRESS = re.compile(r"[A-Za-z0-9]{20,64}")
 TIMEFRAMES = {"1m": ("minute", 1), "5m": ("minute", 5), "15m": ("minute", 15),
               "1h": ("hour", 1), "4h": ("hour", 4), "1d": ("day", 1)}
 
 
 def valid_address(address: str) -> bool:
     """Contract / pool addresses are plain alphanumerics. Anything else never reaches a URL."""
-    return bool(_ADDRESS.match(address or ""))
+    return isinstance(address, str) and bool(_ADDRESS.fullmatch(address))
 
 
 def _included_map(payload: dict) -> dict[str, dict]:

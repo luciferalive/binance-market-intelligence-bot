@@ -93,3 +93,15 @@ def test_unknown_pool_raises_not_found():
         raise AssertionError("expected NotFound")
     except NotFound:
         pass
+
+
+def test_watcher_marks_positions_on_other_chain_and_alerts_on_drain():
+    from marketbot.desk import Desk
+    store = Store(":memory:")
+    desk = Desk(make_getter(), lambda *a, **k: "<rss/>", store, use_gateway=False)
+    desk.paper.buy(chain="solana", pool=POOL, token=TOKEN, symbol="TST", name="Test", usd=100, price=1.0,
+                   liquidity=400_000, price_ts=desk.clock(), sl_pct=10)
+    store.set_setting("chain", "base")  # user looks at another chain
+    desk.watch_once()
+    assert desk.paper.positions() == []  # the stop-loss still fired (market price is far below entry)
+    assert any(o["reason"].startswith("stop-loss") for o in desk.paper.orders())
